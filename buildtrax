@@ -1,0 +1,2 @@
+#!/bin/bash
+clang++ -std=c++11 $(pkg-config --cflags --libs /usr/local/Cellar/opencv3/3.2.0/lib/pkgconfig/opencv.pc) timetrax.cpp -o timetrax && ./timetrax 
