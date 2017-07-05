@@ -257,6 +257,23 @@ int process_frames(cv::Mat *f, bool *get_frames)
                          CV_CHAIN_APPROX_NONE);
         // <<<<< Find contours
 
+        vector<vector<cv::Point> > tableContours;
+        cv::Mat tableRangeRes = cv::Mat::zeros(frame.size(), CV_8UC1);
+        cv::inRange(frmHsv, cv::Scalar(0, 0, 133), cv::Scalar(179, 255, 255), tableRangeRes);
+        cv::findContours(tableRangeRes, tableContours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+        vector<cv::Point> largestContour;
+        cv::Rect largest;
+        int largestArea = 0;
+        for (size_t i = 0; i < tableContours.size(); i++) {
+            cv::Rect bBox = cv::boundingRect(tableContours[i]);
+            int x = bBox.width * bBox.height;
+            if (x > largestArea) {
+                largest = bBox;
+                largestContour = tableContours[i];
+                largestArea = x;
+            }
+        }
+
         // >>>>> Find goals
         // Goals are black
         vector<vector<cv::Point> > blackContours;
@@ -454,6 +471,12 @@ int process_frames(cv::Mat *f, bool *get_frames)
             }
         }
 
+        cv::rectangle(
+            res,
+            cv::Point(150, 70),
+            cv::Point(760, 400),
+            cv::Scalar(255, 255, 255)
+        );
         displayScore(res, score);
         res.copyTo(*f);
         frames++;
