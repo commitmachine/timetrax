@@ -32,28 +32,20 @@ struct score_t {
     int away;
 } score;
 
-cv::Rect combineBoxes(cv::Rect box1, cv::Rect box2) {
-    int x = min(box1.x, box2.x);
-    int width = max(box1.width, box2.width);
-    int y = min(box1.y, box2.y);
-    int maxY = max(box1.height + box1.y, box2.height + box2.y);
-    int height = maxY - y;
-    cv::Rect newBox(x, y, width, height);
-    return newBox;
-}
 void displayScore(cv::Mat frame, score_t score) {
     stringstream sstr;
         sstr << score.home << " - " << score.away;
-        cv::putText(frame, sstr.str(), cv::Point(10, 20),
-            cv::FONT_HERSHEY_COMPLEX_SMALL, 0.8, cv::Scalar(0,255,0), 1, CV_AA);
+        cv::putText(frame, sstr.str(), cv::Point(30, 50),
+            cv::FONT_HERSHEY_COMPLEX_SMALL, 2, cv::Scalar(0,255,0), 2, CV_AA);
 }
 
-
-int process_frames(cv::Mat *f, bool *get_frames)
+int process_frames(cv::Mat *f, bool *get_frames, int *debug)
 {
     // Set up score
     score.home = score.away = 0;
-
+    int showGoalUntilFrame = 0;
+    int showScoreboardPointUntilFrame = 0;
+    string scoreboardPoint = "";
     // >>>> Kalman Filter
     int stateSize = 6;
     int measSize = 4;
@@ -115,8 +107,9 @@ int process_frames(cv::Mat *f, bool *get_frames)
 
     // >>>>> Setup shit
     if (!cap.open("positive.mov"))
+    //if (!cap.open(0))
     {
-        cout << "Webcam not connected.\n" << "Please verify\n";
+        cout << "Webcam not connected.\n";
         return EXIT_FAILURE;
     }
 
@@ -126,6 +119,15 @@ int process_frames(cv::Mat *f, bool *get_frames)
 
     cout << "\nHit 'q' to exit...\n";
 
+    bool init = true;
+    cv::Rect tableRect_init[10];
+    cv::Rect tableRect;
+    cv::Rect blueScoreboard_current;
+    int blueScoreboard_last_goal_height = 0;
+    cv::Rect blueScoreboard[60];
+    cv::Rect whiteScoreboard_current;
+    int whiteScoreboard_last_goal_height = 0;
+    cv::Rect whiteScoreboard[60];
     char ch = 0;
 
     double ticks = 0;
@@ -136,9 +138,9 @@ int process_frames(cv::Mat *f, bool *get_frames)
     int frames = 0;
     int lastSeenBallFrame = 0;
     int lastGoalFrame = 0;
+    int lastScoreFrame = 0;
     bool potentialGoal = false;
     bool potentialGoalHome = false;
-    // >>>>> Main loop
 
     double lastshot = 0;
     bool shot = false;
@@ -160,7 +162,30 @@ int process_frames(cv::Mat *f, bool *get_frames)
 
         cv::Mat res;
         frame.copyTo( res );
+        if(score.home == 10 || score.away == 10){
+            cv::cvtColor(res, res, CV_BGR2GRAY);
+            res.convertTo(res, -1, 0.5, 0);
+            cv::cvtColor(res, res, CV_GRAY2BGR);
+            stringstream sstr;
+            sstr << score.home << " - " << score.away;
+            cv::putText(res, sstr.str(), cv::Point(220, 200),
+                cv::FONT_HERSHEY_COMPLEX_SMALL, 6, cv::Scalar(100,255,100), 5, CV_AA);
 
+            string txtwin;
+            cv::Scalar colorwin;
+            if(score.away == 10){
+                txtwin = "White wins!";
+                colorwin = cv::Scalar(255,255,255);
+            }else{
+                txtwin = "Blue wins!";
+                colorwin = cv::Scalar(255,200,50);
+            }
+            cv::putText(res, txtwin, cv::Point(150, 300),
+                cv::FONT_HERSHEY_COMPLEX_SMALL, 4, colorwin, 7, CV_AA);
+
+            res.copyTo(*f);
+            continue;
+        }
         if (found)
         {
             // >>>> Matrix A
@@ -173,10 +198,10 @@ int process_frames(cv::Mat *f, bool *get_frames)
             // <<<<< Detect shot
             if (abs(state.at<float>(2)) >= 250 && !shot && ticks-lastshot > 1000000000 * 1.7){
                 if (state.at<float>(2) > 0){
-                    cout << "BLUE SHOT!" << endl;
+                    //cout << "BLUE SHOT!" << endl;
                     blueshot = true;
                 }else{
-                    cout << "WHITE SHOT!" << endl;
+                    //cout << "WHITE SHOT!" << endl;
                     blueshot = false;
                 }
                 shot = true;
@@ -214,9 +239,9 @@ int process_frames(cv::Mat *f, bool *get_frames)
 
             stringstream sstr;
             sstr << "(" << center.x << "," << center.y << ")";
-            cv::putText(res, sstr.str(),
-                        cv::Point(center.x + 15, center.y + 30),
-                        cv::FONT_HERSHEY_COMPLEX_SMALL, 1, CV_RGB(255,0,0), 2);
+            //cv::putText(res, sstr.str(),
+            //            cv::Point(center.x + 15, center.y + 30),
+            //            cv::FONT_HERSHEY_COMPLEX_SMALL, 1, CV_RGB(255,0,0), 2);
         }
 
         // >>>>> Blur it
@@ -233,15 +258,6 @@ int process_frames(cv::Mat *f, bool *get_frames)
         cv::Mat rangeRes = cv::Mat::zeros(frame.size(), CV_8UC1);
         cv::inRange(frmHsv, cv::Scalar(0, 92, 141),
             cv::Scalar(80, 255, 255), rangeRes);
-        //((0, 92, 141), (80, 255, 255))
-
-        cv::Mat blackRangeRes = cv::Mat::zeros(frame.size(), CV_8UC1);
-        cv::inRange(frmHsv, cv::Scalar(0, 0, 0),
-            cv::Scalar(255, 255, 37), blackRangeRes);
-
-        cv::Mat bluePlayerRangeRes = cv::Mat::zeros(frame.size(), CV_8UC1);
-        cv::inRange(frmHsv, cv::Scalar(100, 70, 100),
-            cv::Scalar(150, 255, 255), bluePlayerRangeRes);
         // <<<<< Color Thresholding (find sendball)
 
         // >>>>> Improve result
@@ -249,83 +265,203 @@ int process_frames(cv::Mat *f, bool *get_frames)
         cv::dilate(rangeRes, rangeRes, cv::Mat(), cv::Point(-1, -1), 2);
         // <<<<< Improve result
 
-        //cv::imshow("Threshold", rangeRes);
-
         // >>>>> Find contours
         vector<vector<cv::Point> > contours;
         cv::findContours(rangeRes, contours, CV_RETR_EXTERNAL,
                          CV_CHAIN_APPROX_NONE);
         // <<<<< Find contours
 
-        vector<vector<cv::Point> > tableContours;
-        cv::Mat tableRangeRes = cv::Mat::zeros(frame.size(), CV_8UC1);
-        cv::inRange(frmHsv, cv::Scalar(0, 0, 133), cv::Scalar(179, 255, 255), tableRangeRes);
-        cv::findContours(tableRangeRes, tableContours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
-        vector<cv::Point> largestContour;
-        cv::Rect largest;
-        int largestArea = 0;
-        for (size_t i = 0; i < tableContours.size(); i++) {
-            cv::Rect bBox = cv::boundingRect(tableContours[i]);
+        // >>>>> Find blue scoreboard and track it
+        cv::Mat blueRangeRes = cv::Mat::zeros(frame.size(), CV_8UC1);
+        cv::inRange(frmHsv, cv::Scalar(60, 100, 170), cv::Scalar(255, 255, 239), blueRangeRes);
+        cv::erode(blueRangeRes, blueRangeRes, cv::Mat(), cv::Point(-1, -1), 2);
+        cv::dilate(blueRangeRes, blueRangeRes, cv::Mat(), cv::Point(-1, -1), 2);
+
+        vector<vector<cv::Point> > bluecontours;
+        cv::findContours(blueRangeRes, bluecontours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+
+        int blueLargestArea = 0;
+        for (size_t i = 0; i < bluecontours.size(); i++) {
+            cv::Rect bBox = cv::boundingRect(bluecontours[i]);
             int x = bBox.width * bBox.height;
-            if (x > largestArea) {
-                largest = bBox;
-                largestContour = tableContours[i];
-                largestArea = x;
+            if (bBox.x > tableRect.x &&
+                bBox.x < tableRect.x + 50 &&
+                bBox.y > tableRect.y + tableRect.height/5 &&
+                bBox.y < tableRect.y + tableRect.height/3
+                && x > blueLargestArea) {
+                    blueScoreboard[frames % 60] = bBox;
+                    blueLargestArea = x;
             }
         }
+        if(frames % 60 == 0){
+            int totalheight = 0;
+            for(int i=0; i<60; i++){
+                totalheight += blueScoreboard[i].height;
+            }
 
-        // >>>>> Find goals
-        // Goals are black
-        vector<vector<cv::Point> > blackContours;
-        cv::findContours(blackRangeRes, blackContours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+            int avgHeight = totalheight/60;
+            //cout << "running avg height: " << avgHeight << " Last goal height:" << blueScoreboard_last_goal_height << endl;
+            if (frames > 200 && (abs(blueScoreboard_current.height - avgHeight)  > 6 || blueScoreboard_last_goal_height - avgHeight >= 7) && avgHeight > 0){
+                scoreboardPoint = "BLUE";
+                showScoreboardPointUntilFrame = frames + 100;
+                blueScoreboard_last_goal_height = avgHeight;
+                if(frames - lastScoreFrame > 240)
+                    score.home += 1;
+            }
+            blueScoreboard_current = blueScoreboard[frames % 60];
+            blueScoreboard_current.height = avgHeight;
+        }
+        if(*debug > 1){
+            cv::rectangle(res, blueScoreboard_current, cv::Scalar(255, 255, 0), 2);
+        }
+        if(showScoreboardPointUntilFrame > frames && scoreboardPoint == "BLUE"){
+            if(frames % 2 == 0)
+                cv::rectangle(res, blueScoreboard_current, cv::Scalar(0, 255, 0), 2);
+            else
+                cv::rectangle(res, blueScoreboard_current, cv::Scalar(255, 255, 255), 2);
+        }
+        // <<<<< Find blue scoreboard and track it
 
-        vector<vector<cv::Point> > bluePlayerContours;
-        cv::findContours(bluePlayerRangeRes, bluePlayerContours, CV_RETR_LIST, CV_CHAIN_APPROX_NONE);
+        // >>>>> Find white scoreboard and track it
+        cv::Mat whiteRangeRes = cv::Mat::zeros(frame.size(), CV_8UC1);
+        cv::inRange(frmHsv, cv::Scalar(83, 0, 208), cv::Scalar(255, 255, 255), whiteRangeRes);
+        cv::erode(whiteRangeRes, whiteRangeRes, cv::Mat(), cv::Point(-1, -1), 2);
+        cv::dilate(whiteRangeRes, whiteRangeRes, cv::Mat(), cv::Point(-1, -1), 2);
 
-        vector<cv::Rect> potentialGoals;
-        for (size_t i = 0; i < blackContours.size(); i++)
-        {
-            cv::Rect bBox = cv::boundingRect(blackContours[i]);
-            if (bBox.width < 10 and bBox.width > 2) {
-                potentialGoals.push_back(bBox);
+        vector<vector<cv::Point> > whitecontours;
+        cv::findContours(whiteRangeRes, whitecontours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+
+        int whiteLargestArea = 0;
+        for (size_t i = 0; i < whitecontours.size(); i++) {
+            cv::Rect bBox = cv::boundingRect(whitecontours[i]);
+            int x = bBox.width * bBox.height;
+            if (bBox.x > tableRect.x + tableRect.width - 50 &&
+                bBox.x < tableRect.x + tableRect.width &&
+                bBox.y > tableRect.y  &&
+                bBox.y > tableRect.y + tableRect.height/3 &&
+                bBox.y < tableRect.y + tableRect.height &&
+                x > whiteLargestArea) {
+                    whiteScoreboard[frames % 60] = bBox;
+                    whiteLargestArea = x;
             }
         }
+        if(frames % 60 == 0){
+            int totalheight = 0;
+            for(int i=0; i<60; i++){
+                totalheight += whiteScoreboard[i].height;
+            }
 
-        // Sometimes the goalie is in the way of the goal, giving us two
-        // rectangles, so they need to be merged.
-        vector<cv::Rect> actualGoals;
-        for (size_t i = 0; i < potentialGoals.size(); i++) {
-            cv::Rect box = potentialGoals[i];
-            cv::Rect mergeBox;
-            bool sameGoal = false;
-            for (size_t x = 0; x < potentialGoals.size(); x++) {
-                if (i != x) { // Don't match the same
-                    int threshold = 100;
-                    int threshold_x = 15;
-                    if (   potentialGoals[i].y > potentialGoals[x].y - threshold
-                        && potentialGoals[i].y < potentialGoals[x].y + threshold
-                        && potentialGoals[i].x > potentialGoals[x].x - threshold_x
-                        && potentialGoals[i].x < potentialGoals[x].x + threshold_x)
-                    {
-                        mergeBox = potentialGoals[x];
-                        sameGoal = true;
-                        break;
-                    }
+            int avgHeight = totalheight/60;
+            //cout << "running avg height: " << avgHeight << " Last goal height:" << whiteScoreboard_last_goal_height << endl;
+            if (frames > 200 &&
+                (abs(whiteScoreboard_current.height - avgHeight)  > 6 || whiteScoreboard_last_goal_height - avgHeight >= 7) &&
+                avgHeight > 0)
+            {
+                scoreboardPoint = "WHITE";
+                showScoreboardPointUntilFrame = frames + 100;
+                whiteScoreboard_last_goal_height = avgHeight;
+                if(frames - lastScoreFrame > 240)
+                    score.away += 1;
+            }
+            whiteScoreboard_current = whiteScoreboard[frames % 60];
+            whiteScoreboard_current.height = avgHeight;
+        }
+        if(*debug > 1)
+            cv::rectangle(res, whiteScoreboard_current, cv::Scalar(255, 0, 255), 2);
+        if(showScoreboardPointUntilFrame > frames && scoreboardPoint == "WHITE"){
+            if(frames % 2 == 0)
+                cv::rectangle(res, whiteScoreboard_current, cv::Scalar(0, 255, 0), 2);
+            else
+                cv::rectangle(res, whiteScoreboard_current, cv::Scalar(255, 0, 255), 2);
+        }
+        // <<<<< Find white scoreboard and track it
+
+        // >>>>> Find board
+        if(init){
+            vector<vector<cv::Point> > tableContours;
+            cv::Mat tableRangeRes = cv::Mat::zeros(frame.size(), CV_8UC1);
+            cv::inRange(frmHsv, cv::Scalar(0, 0, 133), cv::Scalar(179, 255, 255), tableRangeRes);
+            cv::findContours(tableRangeRes, tableContours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
+            int largestArea = 0;
+            for (size_t i = 0; i < tableContours.size(); i++) {
+                cv::Rect bBox = cv::boundingRect(tableContours[i]);
+                int x = bBox.width * bBox.height;
+                if (x > largestArea) {
+                    tableRect = bBox;
+                    largestArea = x;
                 }
-
             }
-            if (sameGoal) box = combineBoxes(box, mergeBox);
-            if (box.height > 70 && box.width < 15) { // Have the rectangles the size of a goal?
-                // Make the goal rect bigger to have a more accurate hitbox.
-                box.x -= (box.x < 427) ? 60 : -10;
-                box.width += 50;
-                box.y -= 20;
-                box.height += 40;
+            tableRect.y += (tableRect.height - tableRect.width/2)/2;
+            tableRect.height = tableRect.width/2;
+            tableRect_init[frames] = tableRect;
+            int totalheight = 0;
+            int totalwidth = 0;
+            if(frames >= 10){
+                for(int i=0; i<10; i++){
+                    totalheight += tableRect_init[i].height;
+                    totalwidth += tableRect_init[i].width;
+                }
+                int finalheight = totalheight/10;
+                int finalwidth = totalwidth/10;
 
-                actualGoals.push_back(box);
+                tableRect.y += (finalheight - finalwidth/2)/2;
+                tableRect.height = finalwidth/2;
+                init = false;
             }
         }
-        // <<<<< Find goals
+        if(*debug > 2)
+            cv::rectangle(res, tableRect, cv::Scalar(255, 0, 0), 2);
+        // <<<<< Find board
+
+        // >>>>> Goals
+        cv::Scalar blueGoalColor = cv::Scalar(0, 0, 255);
+        cv::Scalar whiteGoalColor = cv::Scalar(0, 0, 255);
+        cv::Rect blueGoal;
+        blueGoal.width = 30;
+        blueGoal.height = 84;
+        blueGoal.x = tableRect.x + 32;
+        blueGoal.y = (tableRect.height/2) + 38;
+
+        cv::Rect whiteGoal;
+        whiteGoal.width = 30;
+        whiteGoal.height = 84;
+        whiteGoal.x = tableRect.x + tableRect.width - 64;
+        whiteGoal.y = (tableRect.height/2) + 34;
+
+        if(*debug > 0){
+            cv::rectangle(res, blueGoal, blueGoalColor, 2);
+            cv::rectangle(res, whiteGoal, whiteGoalColor, 2);
+        }
+
+        int blinkWhiteGoalUntilFrame = 0;
+        int blinkBlueGoalUntilFrame = 0;
+        if (potentialGoalHome && potentialGoal){
+            blinkBlueGoalUntilFrame = frames + 1000;
+        }
+        if (!potentialGoalHome && potentialGoal){
+            blinkWhiteGoalUntilFrame = frames + 1000;
+        }
+
+        if (blinkWhiteGoalUntilFrame > frames){
+            if (frames % 2 == 0){
+                blueGoalColor = cv::Scalar(0, 255, 0);
+            }
+            else{
+                blueGoalColor = cv::Scalar(0, 100, 0);
+            }
+            cv::rectangle(res, blueGoal, blueGoalColor, 2);
+        }
+
+        if (blinkBlueGoalUntilFrame > frames){
+            if (frames % 2 == 0){
+                whiteGoalColor = cv::Scalar(0, 255, 0);
+            }
+            else{
+                whiteGoalColor = cv::Scalar(0, 100, 0);
+            }
+            cv::rectangle(res, whiteGoal, whiteGoalColor, 2);
+        }
+        // <<<<< Goals
 
         // >>>>> Filtering
         vector<vector<cv::Point> > balls;
@@ -350,13 +486,10 @@ int process_frames(cv::Mat *f, bool *get_frames)
         }
         // <<<<< Filtering
 
-        cv::Rect goal(763,195, 45,100); // x, y, width, height
-        cv::Rect goal2(85,195, 45,100);
-
         // >>>>> Detection result
         for (size_t i = 0; i < balls.size(); i++)
         {
-            cv::drawContours(res, balls, i, CV_RGB(20,150,20), 1);
+            //cv::drawContours(res, balls, i, CV_RGB(20,150,20), 1);
             cv::Scalar color = cv::Scalar(0, 255, 0);
 
             if (shot && blueshot){
@@ -438,21 +571,26 @@ int process_frames(cv::Mat *f, bool *get_frames)
 
 
         // If the ball is inside the goal rect, there is a potential goal.
-        for (size_t i = 0; i < actualGoals.size(); i++) {
-            cv::rectangle(res, actualGoals[i], CV_RGB(255,0,0), 2);
-            if (actualGoals[i].contains(cv::Point(state.at<float>(0), state.at<float>(1)))) {
-                cout << "GOAL ???" << endl;
-                potentialGoalHome = actualGoals[i].x > 427; // HOME POINT = SCORE ON THE RIGHT GOAL
-                potentialGoal = true;
-                lastGoalFrame = frames;
-            }
+
+        if (blueGoal.contains(cv::Point(state.at<float>(0), state.at<float>(1)))) {
+            //cout << "GOAL ???" << endl;
+            potentialGoalHome = false; // HOME POINT = SCORE ON THE RIGHT GOAL
+            potentialGoal = true;
+            lastGoalFrame = frames;
+        }
+        else if (whiteGoal.contains(cv::Point(state.at<float>(0), state.at<float>(1)))) {
+            //cout << "GOAL ???" << endl;
+            potentialGoalHome = true; // HOME POINT = SCORE ON THE RIGHT GOAL
+            potentialGoal = true;
+            lastGoalFrame = frames;
         }
 
         // When there is a potential goal, only count it as a real goal if we don't
         // see the ball 30 frames later.
         if (frames > (lastSeenBallFrame + 30)) { // 30 frames since last seen ball
             if (potentialGoal) {
-                cout << "REALLY GOAL!!!" << endl;
+                showGoalUntilFrame = frames + 100;
+                //cout << "REALLY GOAL!!!" << endl;
                 potentialGoal = false;
                 lastGoalFrame = 0;
 
@@ -461,6 +599,7 @@ int process_frames(cv::Mat *f, bool *get_frames)
                 } else {
                     score.away += 1;
                 }
+                lastScoreFrame = frames;
             }
         } else {
             // If we see a the ball 5 frames later, it probably wasn't a goal...
@@ -471,12 +610,19 @@ int process_frames(cv::Mat *f, bool *get_frames)
             }
         }
 
-        cv::rectangle(
-            res,
-            cv::Point(150, 70),
-            cv::Point(760, 400),
-            cv::Scalar(255, 255, 255)
-        );
+        if (showScoreboardPointUntilFrame > frames){
+            cv::putText(res, "GOOD JOB!",
+                        cv::Point(280, 450),
+                        cv::FONT_HERSHEY_TRIPLEX, 2, cv::Scalar(100, 255, 0), 3);
+
+        }
+        if (showGoalUntilFrame > frames){
+            cv::putText(res, "GOOOAL!!! Take a point!",
+                        cv::Point(10, 200),
+                        cv::FONT_HERSHEY_TRIPLEX, 2, cv::Scalar(255, 0, 255), 3);
+
+        }
+        //cv::resize(res, res, cv::Size(1280, 720));
         displayScore(res, score);
         res.copyTo(*f);
         frames++;
@@ -489,14 +635,20 @@ int process_frames(cv::Mat *f, bool *get_frames)
 int main(){
     bool get_frames = true;
     cv::Mat frame;
+    int debug = 0;
     char ch;
-    thread t(process_frames, &frame, &get_frames);
+    thread t(process_frames, &frame, &get_frames, &debug);
 
     while(ch != 'q' && ch != 'Q'){
         if (!frame.empty()) {
             cv::imshow("Tracking", frame);
         }
         ch = cv::waitKey(1);
+        if(ch == 'd'){
+            debug += 1;
+            if(debug > 3)
+                debug = 0;
+        }
     }
     t.join();
     get_frames = false;
