@@ -22,6 +22,7 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include "transform.hpp"
 
 using namespace std;
 
@@ -409,8 +410,7 @@ int process_frames(cv::Mat *f, bool *get_frames, int *debug)
                 init = false;
             }
         }
-        if(*debug > 2)
-            cv::rectangle(res, tableRect, cv::Scalar(255, 0, 0), 2);
+        if(*debug > 2) cv::rectangle(res, tableRect, cv::Scalar(255, 0, 0), 2);
         // <<<<< Find board
 
         // >>>>> Goals
@@ -622,9 +622,21 @@ int process_frames(cv::Mat *f, bool *get_frames, int *debug)
                         cv::FONT_HERSHEY_TRIPLEX, 2, cv::Scalar(255, 0, 255), 3);
 
         }
-        //cv::resize(res, res, cv::Size(1280, 720));
-        displayScore(res, score);
-        res.copyTo(*f);
+        cv::circle(res, cv::Point(144, 70), 2, CV_RGB(255,0,0), -1);
+        cv::circle(res, cv::Point(156, 400), 2, CV_RGB(255,0,0), -1);
+        cv::circle(res, cv::Point(763, 395), 2, CV_RGB(255,0,0), -1);
+        cv::circle(res, cv::Point(768, 65), 2, CV_RGB(255,0,0), -1);
+        cv::Mat rect = cv::Mat::zeros(frame.size(), CV_8UC1);
+
+        vector<cv::Point> points;
+        points.push_back(cv::Point(144, 70));
+        points.push_back(cv::Point(768, 65));
+        points.push_back(cv::Point(763, 395));
+        points.push_back(cv::Point(156, 400));
+
+        cv::Mat warped = Transform::four_point_transform(res, points);
+        displayScore(warped, score);
+        warped.copyTo(*f);
         frames++;
     }
 
